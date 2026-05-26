@@ -182,3 +182,44 @@ triggers:
 4. **空任务名跳过**：DB 中任务名为空的行跳过不处理
 5. **日期范围**：只处理目标周内的任务（周一到周五），超出范围的忽略
 6. **同一任务出现在多个 DB**：去重，保留信息最完整的版本
+
+---
+
+## ⛔ Toggle 丢失问题（严重，反复出现）
+
+这是一个已经出现多次的严重 bug，必须在每次写入时严格防范。
+
+### 问题描述
+
+使用 `update_content` 时，如果 old_str 或 new_str 的边界落在 `### heading` 行上，但没有包含完整的 `{toggle="true"}` 属性，API 会做前缀匹配并**吞掉 `{toggle="true"}`**，导致：
+- toggle 折叠功能消失
+- 内容缩进从双 tab 降级为单 tab
+- 页面结构被破坏
+
+### 触发条件
+
+```
+old_str 结尾: "...\n\t### 5.28 周四"
+实际页面内容: "...\n\t### 5.28 周四 {toggle="true"}"
+→ API 匹配成功，但 {toggle="true"} 被吞掉
+→ 5.28 的 toggle 丢失，内容缩进变成单 tab
+```
+
+### 强制规则（每次 update_content 必须检查）
+
+1. **old_str 和 new_str 的边界绝不能落在 `###` heading 行的中间**
+2. 如果必须包含 heading 行，**必须写完整**：`### 5.28 周四 {toggle="true"}`
+3. **推荐做法**：old_str 结尾在 heading 行的**上一行**（如最后一个任务行），不要跨到下一天的 heading
+4. **最安全做法**：如果要更新多天内容，直接用 `replace_content` 重写整个清单部分，而不是用 `update_content` 逐段修补
+5. **写入后必须验证**：re-fetch 页面，逐一确认 5.25-5.29 每天的 heading 都有 `{toggle="true"}`
+
+### 验证 Checklist
+
+写入完成后，在 re-fetch 的结果中搜索以下内容，确保全部存在：
+- `### 5.25 周一 {toggle="true"}`
+- `### 5.26 周二 {toggle="true"}`
+- `### 5.27 周三 {toggle="true"}`
+- `### 5.28 周四 {toggle="true"}`
+- `### 5.29 周五 {toggle="true"}`
+
+如果任何一天缺少 `{toggle="true"}`，立即修复后再报告完成。
